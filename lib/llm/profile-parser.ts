@@ -66,6 +66,8 @@ const ProfileSchema = z.object({
   activities: z.array(z.object({
     organization: z.string(),
     role: z.string(),
+    start: z.string().optional(),
+    end: z.string().optional(),
     bullets: z.array(z.string()),
   })).optional(),
   languages: z.array(z.object({
@@ -116,7 +118,7 @@ Return a JSON object with these exact fields:
 - experience: [{ company, title, location, start, end (or empty if current), current: boolean, bullets: string[], technologies: string[] }]
 - education: [{ institution, degree, field, location, start, end, gpa, honors, coursework: [], achievements: [], studyAbroad: { institution, location, program, start, end } }]
 - projects: [{ name, description, technologies: [], url, date, achievement }]
-- activities: [{ organization, role, bullets: [] }] (clubs, volunteering, extracurriculars)
+- activities: [{ organization, role, start, end, bullets: [] }] (clubs, volunteering, extracurriculars)
 - languages: [{ name, proficiency }] (e.g., { name: "French", proficiency: "Fluent" })
 - certifications: [{ name, issuer, date, expiry, url, credentialId }]
 

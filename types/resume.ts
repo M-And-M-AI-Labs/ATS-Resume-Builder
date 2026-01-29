@@ -61,6 +61,8 @@ export interface Education {
 export interface Activity {
   organization: string;
   role: string;
+  start?: string; // e.g., "Sep 2017"
+  end?: string; // e.g., "Present"
   bullets: string[];
 }
 

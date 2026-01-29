@@ -269,6 +269,8 @@ export default function ProfilePage() {
       id: `act-${Date.now()}`,
       organization: '',
       role: '',
+      start: '',
+      end: '',
       bullets: [''],
     };
     setProfile(prev => ({ ...prev, activities: [...(prev.activities || []), newActivity] }));
@@ -803,6 +805,20 @@ export default function ProfilePage() {
                       onChange={(e) => updateActivity(index, 'role', e.target.value)}
                       className="px-3 py-2 border border-slate-300 rounded-lg text-sm"
                       placeholder="Role"
+                    />
+                    <input
+                      type="text"
+                      value={activity.start || ''}
+                      onChange={(e) => updateActivity(index, 'start', e.target.value)}
+                      className="px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                      placeholder="Start (e.g., Sep 2017)"
+                    />
+                    <input
+                      type="text"
+                      value={activity.end || ''}
+                      onChange={(e) => updateActivity(index, 'end', e.target.value)}
+                      className="px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                      placeholder="End (e.g., Present)"
                     />
                   </div>
                   <div>

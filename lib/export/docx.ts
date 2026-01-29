@@ -17,6 +17,17 @@ import {
 } from 'docx';
 import { ResumeJSON } from '@/types/resume';
 
+// Sanitize text for WinAnsi encoding (replace problematic Unicode characters)
+function sanitizeText(text: string): string {
+  return text
+    .replace(/[\u2010-\u2015]/g, '-') // Various dashes to hyphen
+    .replace(/[\u2018\u2019]/g, "'")  // Smart single quotes to apostrophe
+    .replace(/[\u201C\u201D]/g, '"')  // Smart double quotes to straight quotes
+    .replace(/\u2026/g, '...')        // Ellipsis to three dots
+    .replace(/\u2022/g, '-')          // Bullet to hyphen (we use Word bullets)
+    .replace(/[\u00A0]/g, ' ');       // Non-breaking space to regular space
+}
+
 // Constants for consistent formatting
 const FONT_NAME = 'Calibri';
 const FONT_SIZE_NAME = 28; // 14pt
@@ -26,7 +37,26 @@ const SECTION_SPACING = 200;
 const ITEM_SPACING = 100;
 const PAGE_WIDTH = 9026; // ~6.27 inches in twips for tab stops
 
+// Deep sanitize all string values in an object
+function sanitizeResume(resume: ResumeJSON): ResumeJSON {
+  const sanitizeValue = (val: any): any => {
+    if (typeof val === 'string') return sanitizeText(val);
+    if (Array.isArray(val)) return val.map(sanitizeValue);
+    if (val && typeof val === 'object') {
+      const result: any = {};
+      for (const key of Object.keys(val)) {
+        result[key] = sanitizeValue(val[key]);
+      }
+      return result;
+    }
+    return val;
+  };
+  return sanitizeValue(resume) as ResumeJSON;
+}
+
 export async function generateDOCX(resume: ResumeJSON): Promise<Buffer> {
+  // Sanitize all text in the resume to ensure WinAnsi compatibility
+  const sanitizedResume = sanitizeResume(resume);
   const children: Paragraph[] = [];
 
   // ===== HEADER =====
@@ -37,7 +67,7 @@ export async function generateDOCX(resume: ResumeJSON): Promise<Buffer> {
       spacing: { after: 80 },
       children: [
         new TextRun({
-          text: resume.header.name.toUpperCase(),
+          text: sanitizedResume.header.name.toUpperCase(),
           bold: true,
           size: FONT_SIZE_NAME,
           font: FONT_NAME,
@@ -48,9 +78,9 @@ export async function generateDOCX(resume: ResumeJSON): Promise<Buffer> {
 
   // Contact info (centered: Location | Phone | Email)
   const contactParts = [
-    resume.header.location,
-    resume.header.phone ? `P: ${resume.header.phone}` : '',
-    resume.header.email,
+    sanitizedResume.header.location,
+    sanitizedResume.header.phone ? `P: ${sanitizedResume.header.phone}` : '',
+    sanitizedResume.header.email,
   ].filter(Boolean);
 
   children.push(
@@ -68,8 +98,8 @@ export async function generateDOCX(resume: ResumeJSON): Promise<Buffer> {
   );
 
   // Links (if any)
-  if (resume.header.links && resume.header.links.length > 0) {
-    const linkParts = resume.header.links.map(link => `${link.type}: ${link.url}`);
+  if (sanitizedResume.header.links && sanitizedResume.header.links.length > 0) {
+    const linkParts = sanitizedResume.header.links.map(link => `${link.type}: ${link.url}`);
     children.push(
       new Paragraph({
         alignment: AlignmentType.CENTER,
@@ -86,10 +116,10 @@ export async function generateDOCX(resume: ResumeJSON): Promise<Buffer> {
   }
 
   // ===== EDUCATION =====
-  if (resume.education && resume.education.length > 0) {
+  if (sanitizedResume.education && sanitizedResume.education.length > 0) {
     children.push(createSectionHeader('EDUCATION'));
 
-    for (const edu of resume.education) {
+    for (const edu of sanitizedResume.education) {
       // Institution and Location | Degree (Date)
       const degreeText = `${edu.degree}${edu.field ? `, ${edu.field}` : ''}`;
       const dateText = edu.end ? (edu.start ? `${edu.start} - ${edu.end}` : edu.end) : '';
@@ -223,11 +253,11 @@ export async function generateDOCX(resume: ResumeJSON): Promise<Buffer> {
   }
 
   // ===== WORK EXPERIENCE =====
-  if (resume.experience && resume.experience.length > 0) {
+  if (sanitizedResume.experience && sanitizedResume.experience.length > 0) {
     children.push(createSectionHeader('WORK EXPERIENCE'));
 
-    for (const exp of resume.experience) {
-      const dateText = `${exp.start} – ${exp.end}`;
+    for (const exp of sanitizedResume.experience) {
+      const dateText = `${exp.start} - ${exp.end}`;
 
       // Company, Location | Title (Date)
       children.push(
@@ -286,10 +316,10 @@ export async function generateDOCX(resume: ResumeJSON): Promise<Buffer> {
   }
 
   // ===== UNIVERSITY PROJECTS =====
-  if (resume.projects && resume.projects.length > 0) {
+  if (sanitizedResume.projects && sanitizedResume.projects.length > 0) {
     children.push(createSectionHeader('UNIVERSITY PROJECTS'));
 
-    for (const project of resume.projects) {
+    for (const project of sanitizedResume.projects) {
       // Project Name (Date) | Achievement
       const projectLine: TextRun[] = [
         new TextRun({
@@ -357,11 +387,15 @@ export async function generateDOCX(resume: ResumeJSON): Promise<Buffer> {
   }
 
   // ===== ACTIVITIES =====
-  if (resume.activities && resume.activities.length > 0) {
+  if (sanitizedResume.activities && sanitizedResume.activities.length > 0) {
     children.push(createSectionHeader('ACTIVITIES'));
 
-    for (const activity of resume.activities) {
-      // Organization | Role
+    for (const activity of sanitizedResume.activities) {
+      // Organization | Role (Date)
+      const dateText = activity.start && activity.end
+        ? `${activity.start} - ${activity.end}`
+        : activity.end || '';
+
       children.push(
         new Paragraph({
           tabStops: [{ type: TabStopType.RIGHT, position: PAGE_WIDTH }],
@@ -382,6 +416,13 @@ export async function generateDOCX(resume: ResumeJSON): Promise<Buffer> {
               size: FONT_SIZE_BODY,
               font: FONT_NAME,
             }),
+            ...(dateText ? [
+              new TextRun({
+                text: ` (${dateText})`,
+                size: FONT_SIZE_BODY,
+                font: FONT_NAME,
+              }),
+            ] : []),
           ],
         })
       );
@@ -409,16 +450,16 @@ export async function generateDOCX(resume: ResumeJSON): Promise<Buffer> {
 
   // ===== ADDITIONAL =====
   const hasAdditional =
-    (resume.skills?.groups && resume.skills.groups.length > 0) ||
-    (resume.languages && resume.languages.length > 0) ||
-    (resume.certifications && resume.certifications.length > 0);
+    (sanitizedResume.skills?.groups && sanitizedResume.skills.groups.length > 0) ||
+    (sanitizedResume.languages && sanitizedResume.languages.length > 0) ||
+    (sanitizedResume.certifications && sanitizedResume.certifications.length > 0);
 
   if (hasAdditional) {
     children.push(createSectionHeader('ADDITIONAL'));
 
     // Technical Skills
-    if (resume.skills?.groups && resume.skills.groups.length > 0) {
-      for (const group of resume.skills.groups) {
+    if (sanitizedResume.skills?.groups && sanitizedResume.skills.groups.length > 0) {
+      for (const group of sanitizedResume.skills.groups) {
         children.push(
           new Paragraph({
             spacing: { after: 40 },
@@ -441,8 +482,8 @@ export async function generateDOCX(resume: ResumeJSON): Promise<Buffer> {
     }
 
     // Languages
-    if (resume.languages && resume.languages.length > 0) {
-      const langText = resume.languages
+    if (sanitizedResume.languages && sanitizedResume.languages.length > 0) {
+      const langText = sanitizedResume.languages
         .map(lang => `${lang.name} (${lang.proficiency})`)
         .join(', ');
 
@@ -467,8 +508,8 @@ export async function generateDOCX(resume: ResumeJSON): Promise<Buffer> {
     }
 
     // Certifications
-    if (resume.certifications && resume.certifications.length > 0) {
-      const certText = resume.certifications
+    if (sanitizedResume.certifications && sanitizedResume.certifications.length > 0) {
+      const certText = sanitizedResume.certifications
         .map(cert => `${cert.name}${cert.issuer ? ` (${cert.issuer})` : ''}`)
         .join(', ');
 

@@ -6,6 +6,34 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { ResumeJSON } from '@/types/resume';
 
+// Sanitize text for WinAnsi encoding (StandardFonts only support WinAnsi)
+function sanitizeText(text: string): string {
+  return text
+    .replace(/[\u2010-\u2015]/g, '-') // Various dashes to hyphen
+    .replace(/[\u2018\u2019]/g, "'")  // Smart single quotes to apostrophe
+    .replace(/[\u201C\u201D]/g, '"')  // Smart double quotes to straight quotes
+    .replace(/\u2026/g, '...')        // Ellipsis to three dots
+    .replace(/\u2022/g, '-')          // Bullet to hyphen
+    .replace(/[\u00A0]/g, ' ');       // Non-breaking space to regular space
+}
+
+// Deep sanitize all string values in an object
+function sanitizeResume(resume: ResumeJSON): ResumeJSON {
+  const sanitizeValue = (val: any): any => {
+    if (typeof val === 'string') return sanitizeText(val);
+    if (Array.isArray(val)) return val.map(sanitizeValue);
+    if (val && typeof val === 'object') {
+      const result: any = {};
+      for (const key of Object.keys(val)) {
+        result[key] = sanitizeValue(val[key]);
+      }
+      return result;
+    }
+    return val;
+  };
+  return sanitizeValue(resume) as ResumeJSON;
+}
+
 // Constants for consistent formatting
 const FONT_SIZE_NAME = 18;
 const FONT_SIZE_SECTION = 11;
@@ -16,6 +44,9 @@ const LINE_HEIGHT = 14;
 const SECTION_SPACING = 20;
 
 export async function generatePDF(resume: ResumeJSON): Promise<Buffer> {
+  // Sanitize all text for WinAnsi encoding compatibility
+  const r = sanitizeResume(resume);
+
   const pdfDoc = await PDFDocument.create();
   const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
@@ -181,8 +212,8 @@ export async function generatePDF(resume: ResumeJSON): Promise<Buffer> {
 
   // ===== HEADER =====
   // Name (centered)
-  const nameWidth = helveticaBold.widthOfTextAtSize(resume.header.name.toUpperCase(), FONT_SIZE_NAME);
-  page.drawText(resume.header.name.toUpperCase(), {
+  const nameWidth = helveticaBold.widthOfTextAtSize(r.header.name.toUpperCase(), FONT_SIZE_NAME);
+  page.drawText(r.header.name.toUpperCase(), {
     x: (width - nameWidth) / 2,
     y,
     size: FONT_SIZE_NAME,
@@ -193,9 +224,9 @@ export async function generatePDF(resume: ResumeJSON): Promise<Buffer> {
 
   // Contact info (centered)
   const contactParts = [
-    resume.header.location,
-    resume.header.phone,
-    resume.header.email,
+    r.header.location,
+    r.header.phone,
+    r.header.email,
   ].filter(Boolean);
   const contactText = contactParts.join('  |  ');
   const contactWidth = helvetica.widthOfTextAtSize(contactText, FONT_SIZE_BODY);
@@ -209,8 +240,8 @@ export async function generatePDF(resume: ResumeJSON): Promise<Buffer> {
   y -= LINE_HEIGHT;
 
   // Links
-  if (resume.header.links && resume.header.links.length > 0) {
-    const linkText = resume.header.links.map((l) => `${l.type}: ${l.url}`).join('  |  ');
+  if (r.header.links && r.header.links.length > 0) {
+    const linkText = r.header.links.map((l) => `${l.type}: ${l.url}`).join('  |  ');
     const linkWidth = helvetica.widthOfTextAtSize(linkText, FONT_SIZE_SMALL);
     if (linkWidth < contentWidth) {
       page.drawText(linkText, {
@@ -227,10 +258,10 @@ export async function generatePDF(resume: ResumeJSON): Promise<Buffer> {
   y -= SECTION_SPACING;
 
   // ===== EDUCATION =====
-  if (resume.education && resume.education.length > 0) {
+  if (r.education && r.education.length > 0) {
     drawSectionHeader('EDUCATION');
 
-    for (const edu of resume.education) {
+    for (const edu of r.education) {
       const leftText = `${edu.institution}${edu.location ? `, ${edu.location}` : ''}`;
       const rightText = `${edu.degree}${edu.field ? `, ${edu.field}` : ''}${edu.end ? ` (${edu.end})` : ''}`;
       drawTwoColumn(leftText, rightText, true);
@@ -267,10 +298,10 @@ export async function generatePDF(resume: ResumeJSON): Promise<Buffer> {
   }
 
   // ===== WORK EXPERIENCE =====
-  if (resume.experience && resume.experience.length > 0) {
+  if (r.experience && r.experience.length > 0) {
     drawSectionHeader('WORK EXPERIENCE');
 
-    for (const exp of resume.experience) {
+    for (const exp of r.experience) {
       const leftText = `${exp.company}${exp.location ? `, ${exp.location}` : ''}`;
       const rightText = `${exp.title} (${exp.start} – ${exp.end})`;
       drawTwoColumn(leftText, rightText, true);
@@ -284,10 +315,10 @@ export async function generatePDF(resume: ResumeJSON): Promise<Buffer> {
   }
 
   // ===== PROJECTS =====
-  if (resume.projects && resume.projects.length > 0) {
+  if (r.projects && r.projects.length > 0) {
     drawSectionHeader('PROJECTS');
 
-    for (const project of resume.projects) {
+    for (const project of r.projects) {
       const projectTitle = project.date ? `${project.name} (${project.date})` : project.name;
       checkNewPage(LINE_HEIGHT);
       page.drawText(projectTitle, {
@@ -312,11 +343,15 @@ export async function generatePDF(resume: ResumeJSON): Promise<Buffer> {
   }
 
   // ===== ACTIVITIES =====
-  if (resume.activities && resume.activities.length > 0) {
+  if (r.activities && r.activities.length > 0) {
     drawSectionHeader('ACTIVITIES');
 
-    for (const activity of resume.activities) {
-      drawTwoColumn(activity.organization, activity.role, true);
+    for (const activity of r.activities) {
+      const dateText = activity.start && activity.end
+        ? `${activity.start} – ${activity.end}`
+        : activity.end || '';
+      const rightText = dateText ? `${activity.role} (${dateText})` : activity.role;
+      drawTwoColumn(activity.organization, rightText, true);
 
       for (const bullet of activity.bullets) {
         drawBullet(bullet);
@@ -328,16 +363,16 @@ export async function generatePDF(resume: ResumeJSON): Promise<Buffer> {
 
   // ===== ADDITIONAL =====
   const hasAdditional =
-    (resume.skills?.groups && resume.skills.groups.length > 0) ||
-    (resume.languages && resume.languages.length > 0) ||
-    (resume.certifications && resume.certifications.length > 0);
+    (r.skills?.groups && r.skills.groups.length > 0) ||
+    (r.languages && r.languages.length > 0) ||
+    (r.certifications && r.certifications.length > 0);
 
   if (hasAdditional) {
     drawSectionHeader('ADDITIONAL');
 
     // Skills
-    if (resume.skills?.groups && resume.skills.groups.length > 0) {
-      for (const group of resume.skills.groups) {
+    if (r.skills?.groups && r.skills.groups.length > 0) {
+      for (const group of r.skills.groups) {
         checkNewPage(LINE_HEIGHT);
         page.drawText(`${group.name}: `, {
           x: PAGE_MARGIN,
@@ -359,9 +394,9 @@ export async function generatePDF(resume: ResumeJSON): Promise<Buffer> {
     }
 
     // Languages
-    if (resume.languages && resume.languages.length > 0) {
+    if (r.languages && r.languages.length > 0) {
       checkNewPage(LINE_HEIGHT);
-      const langText = resume.languages.map((l) => `${l.name} (${l.proficiency})`).join(', ');
+      const langText = r.languages.map((l) => `${l.name} (${l.proficiency})`).join(', ');
       page.drawText('Languages: ', {
         x: PAGE_MARGIN,
         y,
@@ -381,9 +416,9 @@ export async function generatePDF(resume: ResumeJSON): Promise<Buffer> {
     }
 
     // Certifications
-    if (resume.certifications && resume.certifications.length > 0) {
+    if (r.certifications && r.certifications.length > 0) {
       checkNewPage(LINE_HEIGHT);
-      const certText = resume.certifications
+      const certText = r.certifications
         .map((c) => `${c.name}${c.issuer ? ` (${c.issuer})` : ''}`)
         .join(', ');
       page.drawText('Certifications: ', {

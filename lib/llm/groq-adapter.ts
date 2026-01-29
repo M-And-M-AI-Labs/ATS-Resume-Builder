@@ -71,6 +71,8 @@ const ResumeJSONSchema = z.object({
   activities: z.array(z.object({
     organization: z.string(),
     role: z.string(),
+    start: z.string().optional(),
+    end: z.string().optional(),
     bullets: z.array(z.string()),
   })),
   skills: z.object({
