@@ -64,6 +64,8 @@ export interface Activity {
   id?: string;
   organization: string;
   role: string;
+  start?: string; // e.g., "Sep 2017"
+  end?: string; // e.g., "Present"
   bullets: string[];
 }
 
@@ -180,6 +182,8 @@ export function profileToResumeJSON(profile: UserProfile): ResumeJSON {
     activities: (profile.activities || []).map(act => ({
       organization: act.organization,
       role: act.role,
+      start: act.start,
+      end: act.end,
       bullets: act.bullets,
     })),
     skills: {

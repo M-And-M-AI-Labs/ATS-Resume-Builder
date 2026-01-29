@@ -120,7 +120,11 @@ export function generateTXT(resume: ResumeJSON): string {
     lines.push('-'.repeat(60));
 
     for (const activity of resume.activities) {
-      lines.push(`${activity.organization} | ${activity.role}`);
+      const dateText = activity.start && activity.end
+        ? `${activity.start} – ${activity.end}`
+        : activity.end || '';
+      const roleText = dateText ? `${activity.role} (${dateText})` : activity.role;
+      lines.push(`${activity.organization} | ${roleText}`);
 
       for (const bullet of activity.bullets) {
         lines.push(`  • ${bullet}`);
