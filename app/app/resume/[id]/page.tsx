@@ -5,8 +5,9 @@ import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { ResumeJSON, ATSKeywordDiff, ATSGapReport } from '@/types/resume';
 import DiffView from '@/components/resume/DiffView';
+import SectionEditor from '@/components/resume/SectionEditor';
 
-type ViewTab = 'preview' | 'changes' | 'analysis';
+type ViewTab = 'preview' | 'changes' | 'analysis' | 'edit';
 
 export default function ResumePreviewPage() {
   const params = useParams();
@@ -21,6 +22,8 @@ export default function ResumePreviewPage() {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [activeTab, setActiveTab] = useState<ViewTab>('changes');
+  const [editedResume, setEditedResume] = useState<ResumeJSON | null>(null);
+  const [docsExporting, setDocsExporting] = useState(false);
 
   const loadResume = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -43,6 +46,7 @@ export default function ResumePreviewPage() {
 
     setResume(data.tailored_resume_json);
     setOriginalResume(data.original_resume_json);
+    setEditedResume(data.tailored_resume_json); // Initialize edited state with AI-tailored version
     setKeywordDiff(data.ats_keyword_diff);
     setGapReport(data.ats_gap_report);
     setLoading(false);
@@ -113,6 +117,30 @@ export default function ResumePreviewPage() {
     }
   };
 
+  const handleDocsExport = async () => {
+    setDocsExporting(true);
+    try {
+      const response = await fetch('/api/resume/export/docs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resume: editedResume }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Export failed');
+      }
+
+      // Open in new tab
+      window.open(data.docUrl, '_blank');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to export to Google Docs');
+    } finally {
+      setDocsExporting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -174,6 +202,20 @@ export default function ResumePreviewPage() {
                 </svg>
                 {exporting ? 'Exporting...' : 'TXT'}
               </button>
+
+              {/* Google Docs export */}
+              <div className="border-l border-gray-300 h-6 mx-1" />
+              <button
+                onClick={handleDocsExport}
+                disabled={docsExporting}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"/>
+                  <path d="M8 12h8v2H8zm0 4h8v2H8zm0-8h5v2H8z"/>
+                </svg>
+                {docsExporting ? 'Exporting...' : 'Google Docs'}
+              </button>
             </div>
           </div>
         </div>
@@ -218,6 +260,16 @@ export default function ResumePreviewPage() {
             >
               ATS Analysis
             </button>
+            <button
+              onClick={() => setActiveTab('edit')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'edit'
+                  ? 'border-indigo-500 text-indigo-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Edit Sections
+            </button>
           </nav>
         </div>
       </div>
@@ -245,25 +297,25 @@ export default function ResumePreviewPage() {
           </div>
         )}
 
-        {/* Preview Tab */}
-        {activeTab === 'preview' && (
+        {/* Preview Tab - uses editedResume to reflect any user edits */}
+        {activeTab === 'preview' && editedResume && (
           <div className="bg-white rounded-lg shadow p-8">
             <div className="resume-preview font-['Calibri',sans-serif]">
               {/* Header */}
               <div className="text-center mb-4">
                 <h1 className="text-2xl font-bold text-gray-900 uppercase tracking-wide">
-                  {resume.header.name}
+                  {editedResume.header.name}
                 </h1>
                 <div className="mt-1 text-sm text-gray-700">
                   {[
-                    resume.header.location,
-                    resume.header.phone && `P: ${resume.header.phone}`,
-                    resume.header.email,
+                    editedResume.header.location,
+                    editedResume.header.phone && `P: ${editedResume.header.phone}`,
+                    editedResume.header.email,
                   ].filter(Boolean).join(' | ')}
                 </div>
-                {resume.header.links && resume.header.links.length > 0 && (
+                {editedResume.header.links && editedResume.header.links.length > 0 && (
                   <div className="mt-1 text-sm text-gray-600">
-                    {resume.header.links.map((link, i) => (
+                    {editedResume.header.links.map((link, i) => (
                       <span key={i}>
                         {i > 0 && ' | '}
                         <a href={link.url} className="text-indigo-600 hover:underline">
@@ -276,12 +328,12 @@ export default function ResumePreviewPage() {
               </div>
 
               {/* Education */}
-              {resume.education && resume.education.length > 0 && (
+              {editedResume.education && editedResume.education.length > 0 && (
                 <section className="mb-4">
                   <h2 className="text-sm font-bold text-gray-900 uppercase border-b border-gray-900 pb-1 mb-2">
                     Education
                   </h2>
-                  {resume.education.map((edu, i) => (
+                  {editedResume.education.map((edu, i) => (
                     <div key={i} className="mb-3">
                       <div className="flex justify-between items-start">
                         <div>
@@ -309,12 +361,12 @@ export default function ResumePreviewPage() {
               )}
 
               {/* Work Experience */}
-              {resume.experience && resume.experience.length > 0 && (
+              {editedResume.experience && editedResume.experience.length > 0 && (
                 <section className="mb-4">
                   <h2 className="text-sm font-bold text-gray-900 uppercase border-b border-gray-900 pb-1 mb-2">
                     Work Experience
                   </h2>
-                  {resume.experience.map((exp, i) => (
+                  {editedResume.experience.map((exp, i) => (
                     <div key={i} className="mb-3">
                       <div className="flex justify-between items-start">
                         <div>
@@ -337,12 +389,12 @@ export default function ResumePreviewPage() {
               )}
 
               {/* Projects */}
-              {resume.projects && resume.projects.length > 0 && (
+              {editedResume.projects && editedResume.projects.length > 0 && (
                 <section className="mb-4">
                   <h2 className="text-sm font-bold text-gray-900 uppercase border-b border-gray-900 pb-1 mb-2">
                     Projects
                   </h2>
-                  {resume.projects.map((project, i) => (
+                  {editedResume.projects.map((project, i) => (
                     <div key={i} className="mb-3">
                       <div className="font-bold text-sm">
                         {project.name}
@@ -365,12 +417,12 @@ export default function ResumePreviewPage() {
               )}
 
               {/* Activities */}
-              {resume.activities && resume.activities.length > 0 && (
+              {editedResume.activities && editedResume.activities.length > 0 && (
                 <section className="mb-4">
                   <h2 className="text-sm font-bold text-gray-900 uppercase border-b border-gray-900 pb-1 mb-2">
                     Activities
                   </h2>
-                  {resume.activities.map((activity, i) => (
+                  {editedResume.activities.map((activity, i) => (
                     <div key={i} className="mb-3">
                       <div className="flex justify-between items-start">
                         <span className="font-bold text-sm">{activity.organization}</span>
@@ -387,33 +439,33 @@ export default function ResumePreviewPage() {
               )}
 
               {/* Additional */}
-              {((resume.skills?.groups && resume.skills.groups.length > 0) ||
-                (resume.languages && resume.languages.length > 0) ||
-                (resume.certifications && resume.certifications.length > 0)) && (
+              {((editedResume.skills?.groups && editedResume.skills.groups.length > 0) ||
+                (editedResume.languages && editedResume.languages.length > 0) ||
+                (editedResume.certifications && editedResume.certifications.length > 0)) && (
                 <section className="mb-4">
                   <h2 className="text-sm font-bold text-gray-900 uppercase border-b border-gray-900 pb-1 mb-2">
                     Additional
                   </h2>
                   <div className="space-y-1">
-                    {resume.skills?.groups && resume.skills.groups.map((group, i) => (
+                    {editedResume.skills?.groups && editedResume.skills.groups.map((group, i) => (
                       <div key={i} className="text-sm">
                         <span className="font-semibold">{group.name}:</span>{' '}
                         <span className="text-gray-700">{group.items.join(', ')}</span>
                       </div>
                     ))}
-                    {resume.languages && resume.languages.length > 0 && (
+                    {editedResume.languages && editedResume.languages.length > 0 && (
                       <div className="text-sm">
                         <span className="font-semibold">Languages:</span>{' '}
                         <span className="text-gray-700">
-                          {resume.languages.map(l => `${l.name} (${l.proficiency})`).join(', ')}
+                          {editedResume.languages.map(l => `${l.name} (${l.proficiency})`).join(', ')}
                         </span>
                       </div>
                     )}
-                    {resume.certifications && resume.certifications.length > 0 && (
+                    {editedResume.certifications && editedResume.certifications.length > 0 && (
                       <div className="text-sm">
                         <span className="font-semibold">Certifications:</span>{' '}
                         <span className="text-gray-700">
-                          {resume.certifications.map(c => `${c.name}${c.issuer ? ` (${c.issuer})` : ''}`).join(', ')}
+                          {editedResume.certifications.map(c => `${c.name}${c.issuer ? ` (${c.issuer})` : ''}`).join(', ')}
                         </span>
                       </div>
                     )}
@@ -545,6 +597,20 @@ export default function ResumePreviewPage() {
         {activeTab === 'analysis' && !gapReport && (
           <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
             <p>ATS analysis data not available for this resume.</p>
+          </div>
+        )}
+
+        {/* Edit Tab */}
+        {activeTab === 'edit' && editedResume && (
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">Edit Resume Sections</h2>
+            <p className="text-gray-600 text-sm mb-6">
+              Make adjustments to your resume before exporting. These edits are temporary and will be used for the current export only.
+            </p>
+            <SectionEditor
+              resume={editedResume}
+              onChange={setEditedResume}
+            />
           </div>
         )}
       </main>

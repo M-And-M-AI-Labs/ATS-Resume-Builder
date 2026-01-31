@@ -10,6 +10,22 @@ interface DiffViewProps {
 
 type DiffType = 'added' | 'removed' | 'modified' | 'unchanged';
 
+// Normalize string for comparison (collapse whitespace, normalize unicode)
+function normalizeForComparison(str: string): string {
+  return str
+    .normalize('NFKC') // Normalize unicode
+    .replace(/[\u2018\u2019]/g, "'") // Smart quotes to regular
+    .replace(/[\u201C\u201D]/g, '"') // Smart double quotes
+    .replace(/[\u2013\u2014]/g, '-') // En/em dash to hyphen
+    .replace(/\s+/g, ' ') // Collapse whitespace
+    .trim();
+}
+
+// Check if two strings are effectively the same (ignoring formatting differences)
+function areStringsEqual(a: string, b: string): boolean {
+  return normalizeForComparison(a) === normalizeForComparison(b);
+}
+
 interface DiffLine {
   type: DiffType;
   original?: string;
@@ -64,8 +80,8 @@ function compareBullets(original: string[], tailored: string[]): DiffLine[] {
     const tail = tailored[i];
 
     if (orig && tail) {
-      if (orig === tail) {
-        lines.push({ type: 'unchanged', content: orig });
+      if (areStringsEqual(orig, tail)) {
+        lines.push({ type: 'unchanged', content: tail });
       } else {
         lines.push({ type: 'modified', original: orig, tailored: tail, content: tail });
       }
@@ -95,7 +111,7 @@ function diffExperience(original: ResumeJSON['experience'], tailored: ResumeJSON
       const origHeader = `${orig.company}, ${orig.location} | ${orig.title} (${orig.start} – ${orig.end})`;
       const tailHeader = `${tail.company}, ${tail.location} | ${tail.title} (${tail.start} – ${tail.end})`;
 
-      if (origHeader !== tailHeader) {
+      if (!areStringsEqual(origHeader, tailHeader)) {
         hasChanges = true;
         lines.push({ type: 'modified', original: origHeader, tailored: tailHeader, content: tailHeader });
       } else {
@@ -137,7 +153,7 @@ function diffEducation(original: ResumeJSON['education'], tailored: ResumeJSON['
       const origLine = `${orig.institution}, ${orig.location || ''} | ${orig.degree}${orig.field ? `, ${orig.field}` : ''} (${orig.end || ''})`;
       const tailLine = `${tail.institution}, ${tail.location || ''} | ${tail.degree}${tail.field ? `, ${tail.field}` : ''} (${tail.end || ''})`;
 
-      if (origLine !== tailLine) {
+      if (!areStringsEqual(origLine, tailLine)) {
         hasChanges = true;
         lines.push({ type: 'modified', original: origLine, tailored: tailLine, content: tailLine });
       } else {
@@ -162,7 +178,7 @@ function diffProjects(original: ResumeJSON['projects'], tailored: ResumeJSON['pr
 
     if (orig && tail) {
       // Project name
-      if (orig.name !== tail.name) {
+      if (!areStringsEqual(orig.name, tail.name)) {
         hasChanges = true;
         lines.push({ type: 'modified', original: orig.name, tailored: tail.name, content: tail.name });
       } else {
@@ -170,7 +186,7 @@ function diffProjects(original: ResumeJSON['projects'], tailored: ResumeJSON['pr
       }
 
       // Description
-      if (orig.description !== tail.description) {
+      if (!areStringsEqual(orig.description, tail.description)) {
         hasChanges = true;
         lines.push({ type: 'modified', original: `• ${orig.description}`, tailored: `• ${tail.description}`, content: `• ${tail.description}` });
       } else {
@@ -202,7 +218,7 @@ function diffSkills(original: ResumeJSON['skills'], tailored: ResumeJSON['skills
       const origLine = `${orig.name}: ${orig.items.join(', ')}`;
       const tailLine = `${tail.name}: ${tail.items.join(', ')}`;
 
-      if (origLine !== tailLine) {
+      if (!areStringsEqual(origLine, tailLine)) {
         hasChanges = true;
         lines.push({ type: 'modified', original: origLine, tailored: tailLine, content: tailLine });
       } else {
@@ -225,7 +241,10 @@ function diffSummary(original: string | undefined, tailored: string | undefined)
   const lines: DiffLine[] = [];
   let hasChanges = false;
 
-  if (original !== tailored) {
+  const origNorm = original || '';
+  const tailNorm = tailored || '';
+
+  if (!areStringsEqual(origNorm, tailNorm)) {
     hasChanges = true;
     if (original && tailored) {
       lines.push({ type: 'modified', original, tailored, content: tailored });
